@@ -71,7 +71,7 @@ while True:
         contents=contents
     )
 
-    parsed_response = json.loads(response.text) # Parse the JSON response 
+    parsed_response = json.loads(response.text) # Parse the JSON response -> python dict
     contents.append(
         types.Content(
             role="model",

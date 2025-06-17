@@ -20,7 +20,7 @@ client = OpenAI(
 result = client.chat.completions.create(
     model="gemini-2.0-flash",
     messages=[
-        {"role": "user", "content": "What is the square root of 16?"},
+        {"role": "user", "content": "What is the square root of "},
     ]
 )
 

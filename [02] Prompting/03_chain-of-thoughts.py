@@ -106,17 +106,17 @@ response = client.models.generate_content(
             ]
         ),
         # Final step generated the output and explaination
-        # Note: If you attach, final step as well ({ step: "result" }), then it might start all the steps again, means give response of step "analyze".
+        # Note: If you attach, final step as well ({ step: "result" }), then it might start all the steps again, means it'll give response of step "analyze".
         # You can try this by uncommenting the below code.
-        # types.Content(
-        #     role="model",
-        #     parts=[
-        #         types.Part.from_text(text=json.dumps({
-        #             "step": "result",
-        #             "content": "3 + 4 * 5 = 23. This is calculated by first multiplying 4 and 5, which equals 20. Then, adding 3 to 20, which equals 23."
-        #         }))
-        #     ]
-        # )
+        types.Content(
+            role="model",
+            parts=[
+                types.Part.from_text(text=json.dumps({
+                    "step": "result",
+                    "content": "3 + 4 * 5 = 23. This is calculated by first multiplying 4 and 5, which equals 20. Then, adding 3 to 20, which equals 23."
+                }))
+            ]
+        )
     ]
 ) 
 
