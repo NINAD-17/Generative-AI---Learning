@@ -18,6 +18,7 @@ from google import genai
 from google.genai import types
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from ingest import ingest_pdf_to_qdrant
+from ingest import should_ingest
 from retrieve import retrieve
 
 # Load Environmental Variables
@@ -36,10 +37,15 @@ embedding = GoogleGenerativeAIEmbeddings(
 )
 
 # Ingestion
-pdf_path = Path(__file__).parent / "../data/CS Fundamentals Notes.pdf"
+pdf_path = Path(__file__).parent / "../data/Atomic Habits.pdf"
 pdf_name = pdf_path.name
-collection_name = "parallel_query_retrieval_2"
-# ingest_pdf_to_qdrant(pdf_path, collection_name, embedding)
+
+should_ingest_pdf, collection_name = should_ingest(pdf_path)
+if should_ingest_pdf:
+    ingest_pdf_to_qdrant(pdf_path, collection_name, embedding)
+else:
+    # use the existing collection_name as-is, and skip re-ingesting
+    pass
 
 # Retrieval
 n_queries = 3 # number of queries to generate (default)
@@ -98,6 +104,8 @@ Example - "this pdf don't contain data on what you asked" you don't need to say 
 - Use normal text for the main content.
 - For lists, you can use bullet or numerical points.
 - After the final answer, include 3 follow-up questions (each as a bullet point).
+- Based on user preference you should give final answer. User may want answer short, medium or too big so according to the request you can give answer. 
+- By default give medium length output. Such as brief overview, definations, points, examples, and final conclusion. These points are for reference, you can adapt any points according to the query.
 </answer_format>
 
 <examples>
@@ -204,7 +212,6 @@ async def main():
                     print(f"\t{i}. {query}")
 
                 generated_queries.extend(queries) # extend - takes every item from queries and appends it to generated_queries
-                print("GEN --", generated_queries)
 
                 print("\n🔁 Retrieving chunks for generated queries...\n")
                 retrieved_chunks = await retrieve(generated_queries, max_chunks, embedding, collection_name)
