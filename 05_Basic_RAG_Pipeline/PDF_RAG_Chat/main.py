@@ -24,7 +24,7 @@ pdf_path = Path(__file__).parent / "../data/Reach - SMA.pdf"
 collection_name = "rag_pdf_1"
 
 # Run INGESTION
-ingest_pdf_to_qdrant(pdf_path, collection_name, embedding)
+# ingest_pdf_to_qdrant(pdf_path, collection_name, embedding)
 print("This PDF is already ingested")
 
 # Run RETRIEVAL
