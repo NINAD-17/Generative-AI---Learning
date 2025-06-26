@@ -1,5 +1,6 @@
 import asyncio
 from langchain_qdrant import QdrantVectorStore
+from collections import defaultdict
 
 # Retrieve relevant chunks from Qdrant for each query
 def retrieve_relevant_chunks(user_query, max_chunks, embedding, collection_name, score_threshold=0.7):
@@ -48,7 +49,8 @@ async def process_queries_parallely(queries, max_chunks, embedding, collection_n
     results = await asyncio.gather(*tasks) # output list of list (array or array) [[], [], ...]
     return results
 
-async def retrieve(generated_queries, max_chunks, embedding, collection_name):
+# Parallel Query Retrieval
+async def parallel_query_retrieval(generated_queries, max_chunks, embedding, collection_name):
     # Retrieve relevant chunks - output array of array
     retrieved_lists_of_chunks = await process_queries_parallely(generated_queries, max_chunks, embedding, collection_name)
 
@@ -70,4 +72,31 @@ async def retrieve(generated_queries, max_chunks, embedding, collection_name):
         final_chunks.append(chunk)
 
     print(f"️🟩 Successfully retrieved {len(final_chunks)} chunks\n")
+    return final_chunks
+
+# Reciprocal Rank Fusion (RRF)
+async def reciprocal_rank_fusion(queries, max_chunks, embedding, collection_name, k = 60):
+    lists_of_chunks = await process_queries_parallely(queries, max_chunks, embedding, collection_name)
+
+    scores = defaultdict(float)
+
+    for chunk_list in lists_of_chunks:
+        for rank, chunk in enumerate(chunk_list): # rank is a index and will starts from 0
+            content = chunk["content"] # page_content in vector db
+            scores[content] += 1 / (k + rank + 1)
+
+    # Sort by score in descending order - high score = higher ranked chunk
+    ranked_chunks = sorted(scores.items(), key = lambda x: x[1], reverse = True) # scores.items() will return list of tuples ("chunk1", 00.22) so we get access of score by x[1]
+
+    # Rebuild chunk objects from content
+    final_chunks = []
+    seen = set() # to store only unique chunks
+
+    for content, _ in ranked_chunks: # ranked_chunks contain [(chunk, score), ...]
+        for chunk_list in lists_of_chunks: # list_of_chunks [[], [], [], ...]
+            for chunk in chunk_list: # chunk_list [{}, {}, {}, ...]
+                if chunk["content"] == content and content not in seen:
+                    final_chunks.append(chunk)
+                    seen.add(content)
+                    break
     return final_chunks
