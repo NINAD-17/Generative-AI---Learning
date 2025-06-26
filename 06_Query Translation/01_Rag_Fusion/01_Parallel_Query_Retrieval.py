@@ -19,7 +19,7 @@ from google.genai import types
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from ingest import ingest_pdf_to_qdrant
 from ingest import should_ingest
-from retrieve import retrieve
+from retrieve import parallel_query_retrieval
 
 # Load Environmental Variables
 load_dotenv()
@@ -214,7 +214,7 @@ async def main():
                 generated_queries.extend(queries) # extend - takes every item from queries and appends it to generated_queries
 
                 print("\n🔁 Retrieving chunks for generated queries...\n")
-                retrieved_chunks = await retrieve(generated_queries, max_chunks, embedding, collection_name)
+                retrieved_chunks = await parallel_query_retrieval(generated_queries, max_chunks, embedding, collection_name)
 
                 contents.append(
                     types.Content(
