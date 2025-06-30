@@ -1,4 +1,5 @@
 data/
+ingested_pdfs.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
