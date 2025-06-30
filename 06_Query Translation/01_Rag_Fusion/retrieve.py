@@ -83,15 +83,16 @@ async def reciprocal_rank_fusion(queries, max_chunks, embedding, collection_name
     for chunk_list in lists_of_chunks:
         for rank, chunk in enumerate(chunk_list): # rank is a index and will starts from 0
             content = chunk["content"] # page_content in vector db
-            scores[content] += 1 / (k + rank + 1)
+            scores[content] += 1 / (k + rank + 1) # e.g. -> chunk A -> chunk A.content is key and score will be incremented each time chunk A appears in any other chunk_list
 
     # Sort by score in descending order - high score = higher ranked chunk
     ranked_chunks = sorted(scores.items(), key = lambda x: x[1], reverse = True) # scores.items() will return list of tuples ("chunk1", 00.22) so we get access of score by x[1]
 
     # Rebuild chunk objects from content
     final_chunks = []
-    seen = set() # to store only unique chunks
+    seen = set()
 
+    ## NOTE: below logic is expensive O(N * M) in worst case - so improve it later
     for content, _ in ranked_chunks: # ranked_chunks contain [(chunk, score), ...]
         for chunk_list in lists_of_chunks: # list_of_chunks [[], [], [], ...]
             for chunk in chunk_list: # chunk_list [{}, {}, {}, ...]
