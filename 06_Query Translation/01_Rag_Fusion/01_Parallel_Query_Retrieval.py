@@ -159,10 +159,6 @@ def user_input(input_param = "Ask Anything -> "):
         )
     )
 
-# Function to get relevant chunks from Qdrant
-def get_relevant_chunks(query):
-    pass
-
 async def main():
     while True: 
         user_input("Ask anything on your PDF -> ")
