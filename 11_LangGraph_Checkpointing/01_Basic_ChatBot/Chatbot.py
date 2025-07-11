@@ -10,6 +10,8 @@ from langchain_tavily import TavilySearch
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command, interrupt
+from langchain_core.tools import tool
 
 load_dotenv()
 
@@ -19,11 +21,18 @@ llm = init_chat_model("google_genai:gemini-2.0-flash")
 # Initialize MemorySaver checkpointer
 memory = MemorySaver()
 
-# Initialize Tavily Search - a search engine for AI agents
+# Initialize Tavily Search Tool - a search engine for AI agents
 search_web_tool = TavilySearch(max_results=2)
 
+# Human Assitance Tool
+@tool # It transform a standard Python function into a LangChain-compatible tool object
+def human_assistance(query: str) -> str:
+    """Request assistance from a human."""
+    human_response = interrupt({"query": query})
+    return human_response["data"]
+
 # Add all the tools
-tools = [search_web_tool]
+tools = [search_web_tool, human_assistance]
 
 # Bind the tools to LLM so that it will have knowledge of all the available tools
 llm_with_tools = llm.bind_tools(tools)
@@ -34,31 +43,14 @@ class State(TypedDict):
 
 # Nodes
 # Node to run tools
-tool_node = ToolNode(tools=[search_web_tool]) # REPLACED - BasicToolNode
+tool_node = ToolNode(tools = tools) # REPLACED - BasicToolNode
 
 # ChatBot Node
 def chatbot(state: State):
-    return {"messages": [llm_with_tools.invoke(state["messages"])]}
-
-# Route Edge
-def route_tools(state: State):
-    """
-    Use in the conditional_edge to route to the ToolNode if the last message
-    has tool calls. Otherwise, route to the end.
-    """
-
-    if isinstance(state, list):
-        ai_message = state[-1]
-    elif messages := state.get("messages", []):
-        ai_message = messages[-1]
-    else:
-        raise ValueError(f"No messages found in input state to tool_edge: {state}")
-    if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
-        print(f"Routing to tools: {ai_message.tool_calls}")
-        return "tools"
+    message = llm_with_tools.invoke(state["messages"])
     
-    print("❌ No tool calls found, going to END")
-    return END
+    assert len(message.tool_calls) <= 1 # to ensure that only one tool is called because we're using interrupt which will stop the execution
+    return {"messages": [message]}
 
 # Create StateGraph object to define Graph structure
 graph_builder = StateGraph(State)
@@ -102,10 +94,19 @@ while True:
     config = {"configurable": {"thread_id": "1"}} 
 
     try:
+        snapshot = graph.get_state(config)
+        if snapshot.next == ("tools",):
+            print("🔔 Execution paused. Awaiting human input...")
+            data = input("Human input: ")
+            command = Command(resume={"data": data})
+            for event in graph.stream(command, config, stream_mode="values"):
+                event["messages"][-1].pretty_print()
+                
         user_input = input("User: ")
         if user_input.lower() in ["quit", "exit", "q"]:
             print("Goodbye!")
             break
+
         stream_graph_updates(user_input, config)
     except:
         # fallback if input() is not available
