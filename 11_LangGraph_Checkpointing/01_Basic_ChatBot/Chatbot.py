@@ -8,6 +8,7 @@ from langchain.chat_models import init_chat_model
 from IPython.display import Image, display
 from langchain_tavily import TavilySearch
 from langchain_core.messages import ToolMessage
+from langgraph.prebuilt import ToolNode, tools_condition
 
 load_dotenv()
 
@@ -29,32 +30,7 @@ class State(TypedDict):
 
 # Nodes
 # Node to run tools
-class BasicToolNode:
-    """A node that runs the tools requested in the last AIMessage."""
-
-    def __init__(self, tools: list) -> None:
-        self.tools_by_name = {tool.name: tool for tool in tools}
-
-    def __call__(self, inputs: dict):
-        if messages := inputs.get("messages", []):
-            message = messages[-1]
-        else:
-            raise ValueError("No message found in input")
-        outputs = []
-        for tool_call in message.tool_calls:
-            tool_result = self.tools_by_name[tool_call["name"]].invoke(
-                tool_call["args"]
-            )
-            outputs.append(
-                ToolMessage(
-                    content = json.dumps(tool_result),
-                    name = tool_call["name"],
-                    tool_call_id = tool_call["id"],
-                )
-            )
-        return {"messages": outputs}
-
-tool_node = BasicToolNode(tools=[search_web_tool])
+tool_node = ToolNode(tools=[search_web_tool]) # REPLACED - BasicToolNode
 
 # ChatBot Node
 def chatbot(state: State):
@@ -98,7 +74,7 @@ graph_builder.add_node("tools", tool_node)
 # Conditional Edges
 graph_builder.add_conditional_edges(
     "chatbot", 
-    route_tools, 
+    tools_condition, # REPLACED - route_tools
     {
         "tools": "tools",  # When route_tools() returns "tools", go to the node called "tools"
         END: END           # When it returns END, stop the graph.
