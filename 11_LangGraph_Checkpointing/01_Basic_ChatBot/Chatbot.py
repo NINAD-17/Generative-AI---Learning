@@ -9,11 +9,15 @@ from IPython.display import Image, display
 from langchain_tavily import TavilySearch
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
 
 load_dotenv()
 
 # Initialize LLM model
 llm = init_chat_model("google_genai:gemini-2.0-flash")
+
+# Initialize MemorySaver checkpointer
+memory = MemorySaver()
 
 # Initialize Tavily Search - a search engine for AI agents
 search_web_tool = TavilySearch(max_results=2)
@@ -63,14 +67,6 @@ graph_builder = StateGraph(State)
 graph_builder.add_node("chatbot", chatbot)
 graph_builder.add_node("tools", tool_node)
 
-# Overall Flow
-# 1. START -> CHATBOT
-# 2. ROUTE_TOOLS (conditional edge)
-    # - TOOLS
-    # - END
-# 3. (if TOOLS) TOOLS -> CHATBOT
-# 4. (if NOT TOOLS) END
-
 # Conditional Edges
 graph_builder.add_conditional_edges(
     "chatbot", 
@@ -87,7 +83,7 @@ graph_builder.add_edge("tools", "chatbot") # if llm asked to call the tool, rout
 # graph_builder.add_edge("chatbot", END)
 
 # Compile to create a graph from the structure that we've defined
-graph = graph_builder.compile()
+graph = graph_builder.compile(checkpointer = memory)
 
 # Display the Graph (Run it in Jupyter Notebook)
 try:
@@ -97,21 +93,23 @@ except Exception:
     pass
 
 # Run the graph
-def stream_graph_updates(user_input: str):
-    for event in graph.stream({"messages": [{"role": "user", "content": user_input}]}):
-        for value in event.values():
-            print("Assistant:", value["messages"][-1].content)
+def stream_graph_updates(user_input: str, config: dict):
+    for event in graph.stream({"messages": [{"role": "user", "content": user_input}]}, config, stream_mode="values"):
+        event["messages"][-1].pretty_print()
 
 while True:
+    # Checkpointer Thread Id (To recognize individual conversation). You can try it by changing the thread_id
+    config = {"configurable": {"thread_id": "1"}} 
+
     try:
         user_input = input("User: ")
         if user_input.lower() in ["quit", "exit", "q"]:
             print("Goodbye!")
             break
-        stream_graph_updates(user_input)
+        stream_graph_updates(user_input, config)
     except:
         # fallback if input() is not available
         user_input = "What do you know about LangGraph?"
         print("User: " + user_input)
-        stream_graph_updates(user_input)
+        stream_graph_updates(user_input, config)
         break
