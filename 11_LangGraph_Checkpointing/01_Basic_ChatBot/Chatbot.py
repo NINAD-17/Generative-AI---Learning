@@ -1,3 +1,4 @@
+import json
 from dotenv import load_dotenv
 from typing import Annotated
 from typing_extensions import TypedDict
@@ -5,28 +6,109 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain.chat_models import init_chat_model
 from IPython.display import Image, display
+from langchain_tavily import TavilySearch
+from langchain_core.messages import ToolMessage
 
 load_dotenv()
 
 # Initialize LLM model
 llm = init_chat_model("google_genai:gemini-2.0-flash")
 
+# Initialize Tavily Search - a search engine for AI agents
+search_web_tool = TavilySearch(max_results=2)
+
+# Add all the tools
+tools = [search_web_tool]
+
+# Bind the tools to LLM so that it will have knowledge of all the available tools
+llm_with_tools = llm.bind_tools(tools)
+
 # State
 class State(TypedDict):
     messages: Annotated[list, add_messages]
 
+# Nodes
+# Node to run tools
+class BasicToolNode:
+    """A node that runs the tools requested in the last AIMessage."""
+
+    def __init__(self, tools: list) -> None:
+        self.tools_by_name = {tool.name: tool for tool in tools}
+
+    def __call__(self, inputs: dict):
+        if messages := inputs.get("messages", []):
+            message = messages[-1]
+        else:
+            raise ValueError("No message found in input")
+        outputs = []
+        for tool_call in message.tool_calls:
+            tool_result = self.tools_by_name[tool_call["name"]].invoke(
+                tool_call["args"]
+            )
+            outputs.append(
+                ToolMessage(
+                    content = json.dumps(tool_result),
+                    name = tool_call["name"],
+                    tool_call_id = tool_call["id"],
+                )
+            )
+        return {"messages": outputs}
+
+tool_node = BasicToolNode(tools=[search_web_tool])
+
+# ChatBot Node
 def chatbot(state: State):
-    return {"messages": [llm.invoke(state["messages"])]}
+    return {"messages": [llm_with_tools.invoke(state["messages"])]}
+
+# Route Edge
+def route_tools(state: State):
+    """
+    Use in the conditional_edge to route to the ToolNode if the last message
+    has tool calls. Otherwise, route to the end.
+    """
+
+    if isinstance(state, list):
+        ai_message = state[-1]
+    elif messages := state.get("messages", []):
+        ai_message = messages[-1]
+    else:
+        raise ValueError(f"No messages found in input state to tool_edge: {state}")
+    if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
+        print(f"Routing to tools: {ai_message.tool_calls}")
+        return "tools"
+    
+    print("❌ No tool calls found, going to END")
+    return END
 
 # Create StateGraph object to define Graph structure
 graph_builder = StateGraph(State)
 
 # Define Nodes
 graph_builder.add_node("chatbot", chatbot)
+graph_builder.add_node("tools", tool_node)
 
-# Define Flow with Edges
-graph_builder.add_edge(START, "chatbot")
-graph_builder.add_edge("chatbot", END)
+# Overall Flow
+# 1. START -> CHATBOT
+# 2. ROUTE_TOOLS (conditional edge)
+    # - TOOLS
+    # - END
+# 3. (if TOOLS) TOOLS -> CHATBOT
+# 4. (if NOT TOOLS) END
+
+# Conditional Edges
+graph_builder.add_conditional_edges(
+    "chatbot", 
+    route_tools, 
+    {
+        "tools": "tools",  # When route_tools() returns "tools", go to the node called "tools"
+        END: END           # When it returns END, stop the graph.
+    }
+)
+
+# Edges
+graph_builder.add_edge(START, "chatbot") # user input -> chatbot
+graph_builder.add_edge("tools", "chatbot") # if llm asked to call the tool, route_tools -> get output from the tool -> append the output to messages -> chatbot (to get answer from llm with the appended tool output)
+# graph_builder.add_edge("chatbot", END)
 
 # Compile to create a graph from the structure that we've defined
 graph = graph_builder.compile()
